@@ -298,11 +298,12 @@
     // initial signal state ensured by runPhases
     window.addEventListener('load', ()=>{ makeCrosswalk(); });
 		
-		if ('serviceWorker' in navigator) {
+		<script>
+  if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('SW registered', reg))
-      .catch(err => console.error('SW failed', err));
+      .then(reg => console.log('Service Worker registered'))
+      .catch(err => console.error('Service Worker registration failed:', err));
   }
-  </script>
+</script>
 </body>
 </html>
