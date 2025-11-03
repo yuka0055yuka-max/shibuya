@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<!-- PWA -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0f0f14" />
+
+<!-- モバイル対応 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+
+  <meta charset="utf-8" />
+  <title>渋谷スクランブル（信号点灯）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --road:#0f0f14;
+      --stripe:#ffffff;
+      --signal-bg:#111;
+      --ped-walk:#7cff7c;
+      --ped-stop:#334;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(#000014,#000000 60%);overflow:hidden}
+    .scene{position:relative;width:100%;height:100%;overflow:hidden;font-family:sans-serif}
+    .ground{position:absolute;left:0;right:0;bottom:0;height:220px;background:linear-gradient(#0b0b0f,#08080a);z-index:2}
+    .road{position:absolute;left:50%;transform:translateX(-50%);bottom:40px;width:86%;height:140px;background:linear-gradient(#13131a,#0b0b0f);border-radius:4px;z-index:3}
+    .crosswalk-layer{position:absolute;left:0;right:0;bottom:40px;height:140px;z-index:4;pointer-events:none}
+    .stripe{position:absolute;width:36px;height:140px;background:var(--stripe);opacity:0.95;border-radius:2px;box-shadow:0 0 6px rgba(255,255,255,0.06);transform-origin:center}
+    #actors{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:7}
+    .actor{position:absolute;will-change:left,top,transform;pointer-events:none}
+    .person-svg{width:16px;height:24px;display:block}
+    .car-svg{width:46px;height:24px;display:block}
+    .buildings{position:absolute;left:0;right:0;bottom:220px;height:50%;pointer-events:none;z-index:1}
+    .building{position:absolute;bottom:0;background:linear-gradient(#0b0b0e,#0f0f14);border-radius:2px;box-shadow:0 0 20px rgba(0,0,0,0.6)}
+    .windows{position:absolute;inset:8px;display:flex;flex-wrap:wrap;gap:6px}
+    .window{width:6px;height:6px;background:#1a1a1a;border-radius:1px}
+    .star{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 6px rgba(255,255,255,0.6);animation:twinkle 2.5s infinite ease-in-out}
+    @keyframes twinkle{0%,100%{opacity:0.25;transform:scale(1)}50%{opacity:1;transform:scale(1.4)}}
+
+    /* 信号機 */
+    .signal {
+      position:absolute;
+      width:42px;
+      height:110px;
+      background:var(--signal-bg);
+      border-radius:8px;
+      padding:6px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:6px;
+      box-shadow:0 8px 30px rgba(0,0,0,0.6);
+      z-index:8;
+    }
+    .car-light { width:18px;height:18px;border-radius:50%;background:#333;box-shadow:0 0 6px rgba(0,0,0,0.6);opacity:0.95}
+    .ped-light { width:18px;height:12px;border-radius:3px;background:var(--ped-stop);box-shadow:0 0 6px rgba(0,0,0,0.6);opacity:0.95}
+    .on-red{background:red;box-shadow:0 0 18px rgba(255,40,40,0.9)}
+    .on-yellow{background:yellow;box-shadow:0 0 16px rgba(255,220,60,0.9)}
+    .on-green{background:limegreen;box-shadow:0 0 18px rgba(100,255,140,0.9)}
+    .on-ped-walk{background:var(--ped-walk);box-shadow:0 0 14px rgba(124,255,124,0.9)}
+    .on-ped-stop{background:var(--ped-stop);box-shadow:none}
+    .sig-left{left:calc(7% - 20px)}
+    .sig-right{right:calc(7% - 20px)}
+
+    @media (max-width:600px){
+      .stripe{width:24px}
+      .signal{width:36px;height:90px;padding:4px}
+      .car-light{width:14px;height:14px}
+      .ped-light{width:14px;height:10px}
+      .car-svg{width:36px;height:18px}
+      .person-svg{width:12px;height:18px}
+    }
+  </style>
+</head>
+<body>
+  <div class="scene" id="scene">
+    <div class="buildings" id="buildings"></div>
+    <div class="ground"><div class="road" id="road"></div></div>
+    <div class="crosswalk-layer" id="crosswalk"></div>
+
+    <!-- 左右の信号機 -->
+    <div class="signal sig-left" id="signal-left" style="bottom:180px;">
+      <div class="car-light" id="left-car-red"></div>
+      <div class="car-light" id="left-car-yellow"></div>
+      <div class="car-light" id="left-car-green"></div>
+      <div style="height:6px"></div>
+      <div class="ped-light on-ped-stop" id="left-ped"></div>
+    </div>
+
+    <div class="signal sig-right" id="signal-right" style="bottom:180px;">
+      <div class="car-light" id="right-car-red"></div>
+      <div class="car-light" id="right-car-yellow"></div>
+      <div class="car-light" id="right-car-green"></div>
+      <div style="height:6px"></div>
+      <div class="ped-light on-ped-stop" id="right-ped"></div>
+    </div>
+
+    <div id="actors"></div>
+  </div>
+
+  <script>
+	
+    // 要素
+    const scene = document.getElementById('scene');
+    const crosswalkEl = document.getElementById('crosswalk');
+    const actorsEl = document.getElementById('actors');
+    const leftCarRed = document.getElementById('left-car-red');
+    const leftCarYellow = document.getElementById('left-car-yellow');
+    const leftCarGreen = document.getElementById('left-car-green');
+    const leftPed = document.getElementById('left-ped');
+    const rightCarRed = document.getElementById('right-car-red');
+    const rightCarYellow = document.getElementById('right-car-yellow');
+    const rightCarGreen = document.getElementById('right-car-green');
+    const rightPed = document.getElementById('right-ped');
+
+    // ヘルパー
+    const rand = (a,b)=> a + Math.random()*(b-a);
+
+    // 星とビル・横断歩道（簡易）
+    function makeStars(n=120){
+      for(let i=0;i<n;i++){
+        const s=document.createElement('div'); s.className='star';
+        const size = rand(0.6,2.6);
+        s.style.width=s.style.height=size+'px';
+        s.style.left = rand(0,100)+'%';
+        s.style.top = rand(0,35)+'%';
+        s.style.opacity = rand(0.2,1).toFixed(2);
+        s.style.animationDuration = rand(1.5,4)+'s';
+        scene.appendChild(s);
+      }
+    }
+    function makeBuildings(){
+      const ww = window.innerWidth;
+      const cols = Math.max(6, Math.floor(ww/140));
+      const buildingsEl = document.getElementById('buildings');
+      for(let i=0;i<cols;i++){
+        const el=document.createElement('div'); el.className='building';
+        const w = 80 + Math.random()*140; const h = 220 + Math.random()*380;
+        el.style.width = w+'px'; el.style.height = h+'px';
+        el.style.left = (i*(ww/cols) + (Math.random()*40-20))+'px';
+        const winWrap=document.createElement('div'); winWrap.className='windows';
+        const colsWin = Math.max(3, Math.floor((w-16)/12)); const rowsWin = Math.max(6, Math.floor((h-16)/12));
+        for(let r=0;r<rowsWin;r++) for(let c=0;c<colsWin;c++){
+          const wdiv=document.createElement('div'); wdiv.className='window';
+          const rnd = Math.random();
+          if(rnd<0.12) wdiv.style.background = ['#ff3b6b','#25e3ff','#ffd84d'][Math.floor(Math.random()*3)];
+          else if(rnd<0.4) wdiv.style.background = '#ffd';
+          else wdiv.style.background = '#1a1a1a';
+          wdiv.style.opacity = rand(0.2,1).toFixed(2);
+          winWrap.appendChild(wdiv);
+        }
+        el.appendChild(winWrap); buildingsEl.appendChild(el);
+      }
+      setInterval(()=>{ document.querySelectorAll('.window').forEach(w=>{ if(Math.random()<0.12){ w.style.opacity = rand(0.1,1).toFixed(2); if(Math.random()<0.08) w.style.background = ['#ff3b6b','#25e3ff','#ffd84d'][Math.floor(Math.random()*3)]; } }) },600);
+    }
+    function makeCrosswalk(){
+      while(crosswalkEl.firstChild) crosswalkEl.removeChild(crosswalkEl.firstChild);
+      const count=12; const centerX=window.innerWidth/2; const spacing=40; const startLeft = centerX - ((count-1)*spacing/2);
+      for(let i=0;i<count;i++){
+        const s=document.createElement('div'); s.className='stripe';
+        const left = startLeft + i*spacing - 18; s.style.left = left+'px'; s.style.bottom='40px';
+        const angle = 45 + (Math.random()*6-3); s.style.transform = `rotate(${angle}deg)`; crosswalkEl.appendChild(s);
+      }
+    }
+
+    makeStars(); makeBuildings(); makeCrosswalk();
+    window.addEventListener('resize', ()=>{ makeCrosswalk(); });
+
+    /* actor 管理（people / cars） */
+    const actors = [];
+    function spawnPerson(){
+      const dir = Math.random()<0.5 ? 'ltr' : 'rtl';
+      const el=document.createElement('div'); el.className='actor person';
+      const scale = rand(0.7,1.15); el.style.transform = `scale(${scale})`;
+      const y = window.innerHeight - rand(120,160); el.style.top = y+'px';
+      if(dir==='ltr') el.style.left='-40px'; else el.style.left = (window.innerWidth+40)+'px';
+      el.innerHTML = `<svg class="person-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="32" cy="12" r="6" fill="#e6e6e6"/><rect x="26" y="20" width="12" height="18" rx="2" fill="#cfcfcf"/>
+        <rect x="26" y="38" width="6" height="12" rx="2" fill="#bfbfbf"/><rect x="32" y="38" width="6" height="12" rx="2" fill="#bfbfbf"/>
+      </svg>`;
+      actorsEl.appendChild(el);
+      const speed = (dir==='ltr'?1:-1) * rand(0.35,1.05);
+      actors.push({el,type:'person',speed});
+    }
+    function spawnCar(){
+      const dir = Math.random()<0.5 ? 'ltr' : 'rtl';
+      const el=document.createElement('div'); el.className='actor car';
+      const scale = rand(0.9,1.25); el.style.transform = `scale(${scale})`;
+      const laneOffset = rand(20,80); const y = window.innerHeight - 140 + laneOffset; el.style.top = y+'px';
+      if(dir==='ltr') el.style.left='-120px'; else el.style.left = (window.innerWidth+120)+'px';
+      const colors = ['#ff6b6b','#ffcc33','#33c2ff','#9b8cff']; const color = colors[Math.floor(Math.random()*colors.length)];
+      el.innerHTML = `<svg class="car-svg" viewBox="0 0 64 32" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6" y="8" width="52" height="12" rx="3" fill="${color}" /><rect x="12" y="2" width="28" height="10" rx="2" fill="#222" opacity="0.2"/>
+        <circle cx="18" cy="24" r="4" fill="#0b0b0b"/><circle cx="46" cy="24" r="4" fill="#0b0b0b"/><rect x="52" y="10" width="6" height="3" fill="#fff" opacity="0.9"/>
+      </svg>`;
+      actorsEl.appendChild(el);
+      const speed = (dir==='ltr'?1:-1) * rand(1.2,2.6);
+      actors.push({el,type:'car',speed,stopped:false});
+    }
+    setInterval(()=>{ if(Math.random()<0.75) spawnPerson(); },900);
+    setInterval(()=>{ if(Math.random()<0.6) spawnCar(); },1300);
+
+    /* 信号制御（左右交互） */
+    // Phases: left green 4s -> left yellow 1s -> all red 0.5s -> right green 4s -> right yellow 1s -> all red 0.5s
+    let phase = 0;
+    const phases = [
+      {name:'L_GREEN', duration:4000},
+      {name:'L_YELLOW', duration:1000},
+      {name:'ALL_RED', duration:500},
+      {name:'R_GREEN', duration:4000},
+      {name:'R_YELLOW', duration:1000},
+      {name:'ALL_RED2', duration:500}
+    ];
+    function clearSignalClasses(){
+      [leftCarRed,leftCarYellow,leftCarGreen,rightCarRed,rightCarYellow,rightCarGreen,leftPed,rightPed].forEach(el=>{
+        el.classList.remove('on-red','on-yellow','on-green','on-ped-walk','on-ped-stop');
+      });
+    }
+    function applyPhase(p){
+      clearSignalClasses();
+      if(p==='L_GREEN'){
+        leftCarGreen.classList.add('on-green'); rightCarRed.classList.add('on-red');
+        leftPed.classList.add('on-ped-stop'); rightPed.classList.add('on-ped-walk');
+      } else if(p==='L_YELLOW'){
+        leftCarYellow.classList.add('on-yellow'); rightCarRed.classList.add('on-red');
+        leftPed.classList.add('on-ped-stop'); rightPed.classList.add('on-ped-walk');
+      } else if(p==='ALL_RED'){
+        leftCarRed.classList.add('on-red'); rightCarRed.classList.add('on-red');
+        leftPed.classList.add('on-ped-stop'); rightPed.classList.add('on-ped-stop');
+      } else if(p==='R_GREEN'){
+        rightCarGreen.classList.add('on-green'); leftCarRed.classList.add('on-red');
+        rightPed.classList.add('on-ped-stop'); leftPed.classList.add('on-ped-walk');
+      } else if(p==='R_YELLOW'){
+        rightCarYellow.classList.add('on-yellow'); leftCarRed.classList.add('on-red');
+        rightPed.classList.add('on-ped-stop'); leftPed.classList.add('on-ped-walk');
+      } else if(p==='ALL_RED2'){
+        leftCarRed.classList.add('on-red'); rightCarRed.classList.add('on-red');
+        leftPed.classList.add('on-ped-stop'); rightPed.classList.add('on-ped-stop');
+      }
+    }
+    // run phases loop
+    function runPhases(){
+      const ph = phases[phase];
+      applyPhase(ph.name);
+      setTimeout(()=>{
+        phase = (phase+1) % phases.length;
+        runPhases();
+      }, ph.duration);
+    }
+    runPhases();
+
+    /* actor 挙動：信号に合わせて車/歩行者が動く */
+    function carAxisLeftAllows(){
+      // left axis cars allowed when left green or left yellow (treat yellow as slow go)
+      return leftCarGreen.classList.contains('on-green') || leftCarYellow.classList.contains('on-yellow');
+    }
+    function carAxisRightAllows(){
+      return rightCarGreen.classList.contains('on-green') || rightCarYellow.classList.contains('on-yellow');
+    }
+
+    function animate(){
+      for(let i=actors.length-1;i>=0;i--){
+        const a = actors[i]; const el=a.el; const x = parseFloat(el.style.left);
+        if(a.type==='car'){
+          const comingFromLeft = a.speed>0;
+          const allow = comingFromLeft ? carAxisLeftAllows() : carAxisRightAllows();
+          const centerMin = window.innerWidth*0.36; const centerMax = window.innerWidth*0.64;
+          if(!allow){
+            if(a.speed>0 && x > centerMin && x < centerMax) a.stopped = true;
+            if(a.speed<0 && x < centerMax && x > centerMin) a.stopped = true;
+          } else a.stopped = false;
+          if(!a.stopped) el.style.left = (x + a.speed) + 'px';
+          if(x < -300 || x > window.innerWidth + 300){ if(el.parentNode) el.parentNode.removeChild(el); actors.splice(i,1); }
+        } else if(a.type==='person'){
+          // map pedestrian direction: those moving right-to-left follow left-ped, left-to-right follow right-ped (for variety)
+          const movingRight = a.speed>0;
+          const pedAllowed = movingRight ? rightPed.classList.contains('on-ped-walk') : leftPed.classList.contains('on-ped-walk');
+          if(pedAllowed) el.style.left = (x + a.speed) + 'px';
+          else {
+            const t = Date.now()/400; const scaleMatch = el.style.transform.match(/scale\(([^)]+)\)/); const scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+            el.style.transform = `translateY(${Math.sin(t + i)*2}px) scale(${scale})`;
+          }
+          if(x < -200 || x > window.innerWidth + 200){ if(el.parentNode) el.parentNode.removeChild(el); actors.splice(i,1); }
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    // spawn loops
+    setInterval(()=>{ if(Math.random()<0.75) spawnPerson(); },900);
+    setInterval(()=>{ if(Math.random()<0.6) spawnCar(); },1300);
+
+    // expose spawn functions used earlier
+    function spawnPerson(){ const dir = Math.random()<0.5 ? 'ltr' : 'rtl'; const el=document.createElement('div'); el.className='actor person'; const scale = rand(0.7,1.15); el.style.transform = `scale(${scale})`; const y = window.innerHeight - rand(120,160); el.style.top = y+'px'; if(dir==='ltr') el.style.left='-40px'; else el.style.left = (window.innerWidth+40)+'px'; el.innerHTML = `<svg class="person-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="12" r="6" fill="#e6e6e6"/><rect x="26" y="20" width="12" height="18" rx="2" fill="#cfcfcf"/><rect x="26" y="38" width="6" height="12" rx="2" fill="#bfbfbf"/><rect x="32" y="38" width="6" height="12" rx="2" fill="#bfbfbf"/></svg>`; actorsEl.appendChild(el); const speed = (dir==='ltr'?1:-1) * rand(0.35,1.05); actors.push({el,type:'person',speed}); }
+    function spawnCar(){ const dir = Math.random()<0.5 ? 'ltr' : 'rtl'; const el=document.createElement('div'); el.className='actor car'; const scale = rand(0.9,1.25); el.style.transform = `scale(${scale})`; const laneOffset = rand(20,80); const y = window.innerHeight - 140 + laneOffset; el.style.top = y+'px'; if(dir==='ltr') el.style.left='-120px'; else el.style.left = (window.innerWidth+120)+'px'; const colors = ['#ff6b6b','#ffcc33','#33c2ff','#9b8cff']; const color = colors[Math.floor(Math.random()*colors.length)]; el.innerHTML = `<svg class="car-svg" viewBox="0 0 64 32" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="8" width="52" height="12" rx="3" fill="${color}" /><rect x="12" y="2" width="28" height="10" rx="2" fill="#222" opacity="0.2"/><circle cx="18" cy="24" r="4" fill="#0b0b0b"/><circle cx="46" cy="24" r="4" fill="#0b0b0b"/><rect x="52" y="10" width="6" height="3" fill="#fff" opacity="0.9"/></svg>`; actorsEl.appendChild(el); const speed = (dir==='ltr'?1:-1) * rand(1.2,2.6); actors.push({el,type:'car',speed,stopped:false}); }
+
+    // initial signal state ensured by runPhases
+    window.addEventListener('load', ()=>{ makeCrosswalk(); });
+		
+		if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registered', reg))
+      .catch(err => console.error('SW failed', err));
+  }
+  </script>
+</body>
+</html>
