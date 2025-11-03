@@ -1,4 +1,4 @@
-const CACHE_NAME = 'scramble-cache-v1';
+const CACHE_NAME = 'shibuya-cache-v1';
 const urlsToCache = [
   './',
   './index.html',
