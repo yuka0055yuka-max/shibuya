@@ -5,5 +5,17 @@
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#0f0f14",
-  "description": "ネオンと満月が輝く渋谷の交差点を再現したPWA"
+  "description": "ネオンと満月が輝く渋谷の交差点を再現したPWA",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }
